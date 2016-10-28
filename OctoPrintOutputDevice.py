@@ -3,7 +3,7 @@
 import os.path
 
 from PyQt5 import QtNetwork
-from PyQt5.QtCore import QTemporaryFile, QUrl
+from PyQt5.QtCore import QTemporaryFile, QFile, QUrl
 from PyQt5.QtGui import QDesktopServices
 
 from UM.Application import Application
@@ -89,7 +89,7 @@ class OctoPrintOutputDevice(OutputDevice):
         try:
             # create the temp file for the gcode
             self._stream = QTemporaryFile()
-            self._stream.open()
+            self._stream.open(QFile.ReadWrite | QFile.Text)
             tmpFileName = self._stream.fileName()
 
             # create the writer job
@@ -99,7 +99,7 @@ class OctoPrintOutputDevice(OutputDevice):
             job.finished.connect(self._onWriteFinished)
 
             # show a progress message
-            message = Message(catalog.i18nc("@info:progress", "Saving to OctoPrint <filename>{0}</filename>").format(self.getName()), 0, False, -1)
+            message = Message(catalog.i18nc("@info:progress", "Saving to <filename>{0}</filename>").format(self.getName()), 0, False, -1)
             message.show()
             self._message = message
             job._message = message
@@ -128,7 +128,7 @@ class OctoPrintOutputDevice(OutputDevice):
                 job._message.hide()
                 job._message = None
             self._cleanupRequest()
-            message = Message(catalog.i18nc("@info:status", "Could not save to OctoPrint {0}: {1}").format(self.getName(), str(job.getError())))
+            message = Message(catalog.i18nc("@info:status", "Could not save to {0}: {1}").format(self.getName(), str(job.getError())))
             message.show()
             self.writeError.emit(self)
             return
@@ -192,11 +192,11 @@ class OctoPrintOutputDevice(OutputDevice):
 
         self.writeFinished.emit(self)
         if reply.error():
-            message = Message(catalog.i18nc("@info:status", "Could not save to OctoPrint {0}: {1}").format(self.getName(), str(reply.errorString())))
+            message = Message(catalog.i18nc("@info:status", "Could not save to {0}: {1}").format(self.getName(), str(reply.errorString())))
             message.show()
             self.writeError.emit(self)
         else:
-            message = Message(catalog.i18nc("@info:status", "Saved to OctoPrint {0} as {1}").format(self.getName(), os.path.basename(self._fileName)))
+            message = Message(catalog.i18nc("@info:status", "Saved to {0} as {1}").format(self.getName(), os.path.basename(self._fileName)))
             message.addAction("open_browser", catalog.i18nc("@action:button", "Open Browser"), "globe", catalog.i18nc("@info:tooltip", "Open browser to OctoPrint."))
             message.actionTriggered.connect(self._onMessageActionTriggered)
             message.show()
