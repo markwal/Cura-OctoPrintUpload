@@ -48,7 +48,7 @@ class OctoPrintOutputDevice(OutputDevice):
         self._stream = None
         self._cleanupRequest()
 
-    def requestWrite(self, node, fileName = None, filterByMachine = False):
+    def requestWrite(self, node, fileName = None, *args, **kwargs):
         if self._stage != OutputStage.ready:
             raise OutputDeviceError.DeviceBusyError()
 
