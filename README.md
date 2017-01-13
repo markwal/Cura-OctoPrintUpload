@@ -21,6 +21,9 @@ C:\\Users\\[YourLoginNameHere]\\AppData\\Local\\cura\\plugins\\Cura-OctoPrintUpl
 
 Be careful, the unzipper often tacks on the name of the zip as a folder at the bottom and you don't want it nested.  You want the files to show up in that folder.
 
+## Running from source
+Alternatively you can run from the source directly. It'll make it easy to update in the future. Use git to clone this repository into the folders given above.
+
 ## Configuration
 Boot up Cura, choose the following from the Menu Bar: Extensions->OctoPrint->Servers.  Click "Add" and tell it the url to your OctoPrint instance (i.e. http://octo.local) and give it the API key from OctoPrint (it's in Settings->API).
 
