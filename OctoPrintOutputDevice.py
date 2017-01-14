@@ -27,6 +27,11 @@ class OutputStage(Enum):
     uploading = 2
 
 
+class TemporaryFile(QTemporaryFile):
+    def write(self, data):
+        return super().write(bytes(data, "utf-8"))
+
+
 class OctoPrintOutputDevice(OutputDevice):
     def __init__(self, name="OctoPrint", host="http://octopi.local", apiKey=""):
         super().__init__(name)
@@ -88,7 +93,7 @@ class OctoPrintOutputDevice(OutputDevice):
 
         try:
             # create the temp file for the gcode
-            self._stream = QTemporaryFile()
+            self._stream = TemporaryFile()
             self._stream.open(QFile.ReadWrite | QFile.Text)
             tmpFileName = self._stream.fileName()
 
@@ -146,7 +151,7 @@ class OctoPrintOutputDevice(OutputDevice):
             part = QtNetwork.QHttpPart()
             part.setHeader(QtNetwork.QNetworkRequest.ContentDispositionHeader,
                     'form-data; name="%s"' % key)
-            part.setBody(value)
+            part.setBody(value.encode())
             self._multipart.append(part)
 
         # add the file part
@@ -157,9 +162,10 @@ class OctoPrintOutputDevice(OutputDevice):
         self._multipart.append(part)
 
         # send the post
+        Logger.log("i", "QNetworkRequest")
         self._request = QtNetwork.QNetworkRequest(QUrl(self._host + "/api/files/local"))
-        self._request.setRawHeader('User-agent', 'Cura OctoPrintOutputDevice Plugin')
-        self._request.setRawHeader('X-Api-Key', self._apiKey)
+        self._request.setRawHeader('User-agent'.encode(), 'Cura OctoPrintOutputDevice Plugin'.encode())
+        self._request.setRawHeader('X-Api-Key'.encode(), self._apiKey.encode())
         self._reply = self._qnam.post(self._request, self._multipart)
 
         # connect the reply signals
@@ -175,6 +181,7 @@ class OctoPrintOutputDevice(OutputDevice):
         self._reply = None
         self._request = None
         self._multipart = None
+        self._body_part = None
         if self._stream:
             self._stream.close()
         self._stream = None
