@@ -1,18 +1,16 @@
 # OctoPrintOutputDevice
 
 import os.path
+from io import StringIO
+from time import time
 
 from PyQt5 import QtNetwork
-from PyQt5.QtCore import QTemporaryFile, QFile, QUrl
+from PyQt5.QtCore import QFile, QUrl, QCoreApplication
 from PyQt5.QtGui import QDesktopServices
 
 from UM.Application import Application
 from UM.Logger import Logger
 from UM.Message import Message
-from UM.Job import Job
-from UM.Mesh.WriteMeshJob import WriteMeshJob
-from UM.Mesh.MeshWriter import MeshWriter
-from UM.Scene.Iterator.BreadthFirstIterator import BreadthFirstIterator
 from UM.OutputDevice.OutputDevice import OutputDevice
 from UM.OutputDevice import OutputDeviceError
 
@@ -25,11 +23,6 @@ class OutputStage(Enum):
     ready = 0
     writing = 1
     uploading = 2
-
-
-class TemporaryFile(QTemporaryFile):
-    def write(self, data):
-        return super().write(bytes(data, "utf-8"))
 
 
 class OctoPrintOutputDevice(OutputDevice):
@@ -57,88 +50,36 @@ class OctoPrintOutputDevice(OutputDevice):
         if self._stage != OutputStage.ready:
             raise OutputDeviceError.DeviceBusyError()
 
-        # get the file format
-        fileFormats = Application.getInstance().getMeshFileHandler().getSupportedFileTypesWrite()
-        gcodeFileFormat = None
-        for fileFormat in fileFormats:
-            if fileFormat["mime_type"] == "text/x-gcode":
-                gcodeFileFormat = fileFormat
-                break
-        if gcodeFileFormat is None:
-            Logger.log("e", "OctoPrint plugin couldn't find the g-code output file format")
-            raise OutputDeviceError.WriteRequestFailedError()
-
-        # get a writer for that format
-        writer = Application.getInstance().getMeshFileHandler().getWriterByMimeType(gcodeFileFormat["mime_type"])
-        extension = gcodeFileFormat["extension"]
-
-        # figure out a filename
-        if not fileName:
-            for n in BreadthFirstIterator(node):
-                if n.getMeshData():
-                    fileName = n.getName()
-                    if fileName:
-                        break
-
-        if not fileName:
-            Logger.log("e", "fileName: {0}".format(fileName))
-            Logger.log("e", "Could not determine a proper file name when trying to write to %s, aborting", self.getName())
-            raise OutputDeviceError.WriteRequestFailedError()
-
-        if extension:
-            extension = "." + extension
-        fileName = os.path.splitext(fileName)[0] + extension
+        if fileName:
+            fileName = os.path.splitext(fileName)[0] + '.gcode'
+        else:
+            fileName = "%s.gcode" % Application.getInstance().getPrintInformation().jobName
         self._fileName = fileName
-        tmpFileName = ""
 
-        try:
-            # create the temp file for the gcode
-            self._stream = TemporaryFile()
-            self._stream.open(QFile.ReadWrite | QFile.Text)
-            tmpFileName = self._stream.fileName()
+        # create the temp file for the gcode
+        self._stream = StringIO()
+        self._stage = OutputStage.writing
+        self.writeStarted.emit(self)
 
-            # create the writer job
-            job = WriteMeshJob(writer, self._stream, node, MeshWriter.OutputMode.TextMode)
-            job.setFileName(fileName)
-            job.progress.connect(self._onProgress)
-            job.finished.connect(self._onWriteFinished)
+        # show a progress message
+        message = Message(catalog.i18nc("@info:progress", "Saving to <filename>{0}</filename>").format(self.getName()), 0, False, -1)
+        message.show()
+        self._message = message
 
-            # show a progress message
-            message = Message(catalog.i18nc("@info:progress", "Saving to <filename>{0}</filename>").format(self.getName()), 0, False, -1)
-            message.show()
-            self._message = message
-            job._message = message
+        # send all the gcode to self._stream
+        gcode = getattr(Application.getInstance().getController().getScene(), "gcode_list")
+        lines = len(gcode)
+        nextYield = time() + 0.05
+        i = 0
+        for line in gcode:
+            i += 1
+            self._stream.write(line)
+            if time() > nextYield:
+                self._onProgress(i / lines)
+                QCoreApplication.processEvents()
+                nextYield = time() + 0.05
 
-            # set our state and start the job
-            self._stage = OutputStage.writing
-            self.writeStarted.emit(self)
-            job.start()
-        except PermissionError as e:
-            Logger.log("e", "Permission denied when trying to write to temporary file %s for %s: %s", tmpFileName, fileName, str(e))
-            raise OutputDeviceError.PermissionDeniedError(catalog.i18nc("@info:status", "Could not save to temporary file <filename>{0}</filename> for <filename>{1}</filename>: <message>{2}</message>").format(tmpFileName, fileName, str(e))) from e
-        except OSError as e:
-            Logger.log("e", "Unable to write to temporary file %s for %s: %s", tmpFileName, fileName, str(e))
-            raise OutputDeviceError.WriteRequestFailedError(catalog.i18nc("@info:status", "Could not save to temporary file <filename>{0}</filename> for <filename>{1}</filename>: <message>{2}</message>").format(tmpFileName, fileName, str(e))) from e
-
-    def _onProgress(self, job, progress):
-        progress = (50 if self._stage == OutputStage.uploading else 0) + (progress / 2)
-        if self._message:
-            self._message.setProgress(progress)
-        self.writeProgress.emit(self, progress)
-
-    def _onWriteFinished(self, job):
-        # failed to write the temporary gcode file
-        if not job.getResult():
-            if hasattr(job, "_message"):
-                job._message.hide()
-                job._message = None
-            self._cleanupRequest()
-            message = Message(catalog.i18nc("@info:status", "Could not save to {0}: {1}").format(self.getName(), str(job.getError())))
-            message.show()
-            self.writeError.emit(self)
-            return
-
-        # the temp file contains the gcode, now upload it
+        # self._stream now contains the gcode, now upload it
         self._stage = OutputStage.uploading
         self._stream.seek(0)
 
@@ -157,12 +98,11 @@ class OctoPrintOutputDevice(OutputDevice):
         # add the file part
         part = QtNetwork.QHttpPart()
         part.setHeader(QtNetwork.QNetworkRequest.ContentDispositionHeader,
-                'form-data; name="file"; filename="%s"' % job.getFileName())
-        part.setBodyDevice(self._stream)
+                'form-data; name="file"; filename="%s"' % fileName)
+        part.setBody(self._stream.getvalue().encode())
         self._multipart.append(part)
 
         # send the post
-        Logger.log("i", "QNetworkRequest")
         self._request = QtNetwork.QNetworkRequest(QUrl(self._host + "/api/files/local"))
         self._request.setRawHeader('User-agent'.encode(), 'Cura OctoPrintOutputDevice Plugin'.encode())
         self._request.setRawHeader('X-Api-Key'.encode(), self._apiKey.encode())
@@ -173,9 +113,11 @@ class OctoPrintOutputDevice(OutputDevice):
         self._reply.uploadProgress.connect(self._onUploadProgress)
         self._reply.downloadProgress.connect(self._onDownloadProgress)
 
-        if hasattr(job, "_message"):
-            self._message = job._message
-            job._message = None
+    def _onProgress(self, progress):
+        progress = (50 if self._stage == OutputStage.uploading else 0) + (progress / 2)
+        if self._message:
+            self._message.setProgress(progress)
+        self.writeProgress.emit(self, progress)
 
     def _cleanupRequest(self):
         self._reply = None
@@ -227,7 +169,7 @@ class OctoPrintOutputDevice(OutputDevice):
 
     def _onUploadProgress(self, bytesSent, bytesTotal):
         if bytesTotal > 0:
-            self._onProgress(self, int(bytesSent * 100 / bytesTotal))
+            self._onProgress(int(bytesSent * 100 / bytesTotal))
 
     def _onDownloadProgress(self, bytesReceived, bytesTotal):
         pass
