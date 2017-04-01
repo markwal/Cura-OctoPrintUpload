@@ -163,7 +163,6 @@ class OctoPrintOutputDevice(OutputDevice):
         Logger.log("e", "Ssl errors: %s", repr(errors))
 
         errorString = ", ".join([str(error.errorString()) for error in errors])
-        self.setError(errorString)
         message = Message(catalog.i18nc("@info:progress", "One or more SSL errors has occurred: {0}").format(errorString), 0, False, -1)
         message.show()
 
@@ -179,7 +178,8 @@ class OctoPrintOutputDevice(OutputDevice):
         if self._message:
             self._message.hide()
         self._message = None
-        self.setError(str(errorCode))
+        message = Message(catalog.i18nc("@info:progress", "There was a network error: {0}").format(errorCode), 0, False, -1)
+        message.show()
 
     def _cancelUpload(self):
         if self._message:
