@@ -19,6 +19,9 @@ C:\\Users\\[YourLoginNameHere]\\AppData\\Local\\cura\\plugins\\Cura-OctoPrintUpl
 ### Mac
 ~/Library/Application Support/Cura/plugins/Cura-OctoPrintUpload
 
+### Linux
+/home/[YOUR_USERNAME]/.local/share/cura/plugins/Cura-OctoPrintUpload
+
 Be careful, the unzipper often tacks on the name of the zip as a folder at the bottom and you don't want it nested.  You want the files to show up in that folder.
 
 ## Running from source
