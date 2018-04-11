@@ -1,0 +1,7 @@
+{
+    "name": "Octoprint Upload",
+    "author": "markwal",
+    "version": "3.2.0",
+    "api": 4,
+    "description": "Extension that allows the upload of sliced models to OctoPrint"
+}
