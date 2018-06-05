@@ -1,0 +1,8 @@
+{
+    "name": "OctoPrint Upload",
+    "author": "Mark Walker, fix for 3.3 by BerndJM",
+    "version": "3.3",
+    "api": 4,
+    "description": "Plugin for Cura that adds a Save to OctoPrint button that allows upload to OctoPrint in one step.",
+    "catalog": "cura"
+}
