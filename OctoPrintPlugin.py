@@ -41,15 +41,8 @@ class OctoPrintExtension(QObject, Extension, OutputDevicePlugin):
             manager.removeOutputDevice(name)
 
     def _createDialog(self, qml):
-        path = QUrl.fromLocalFile(os.path.join(os.path.dirname(os.path.abspath(__file__)), qml))
-        self._component = QQmlComponent(Application.getInstance()._engine, path)
-        self._context = QQmlContext(Application.getInstance()._engine.rootContext())
-        self._context.setContextProperty("manager", self)
-        dialog = self._component.create(self._context)
-        if dialog is None:
-            Logger.log("e", "QQmlComponent status %s", self._component.status())
-            Logger.log("e", "QQmlComponent errorString %s", self._component.errorString())
-            raise RuntimeError(self._component.errorString())
+        path = os.path.join(PluginRegistry.getInstance().getPluginPath(self.getPluginId()), qml)
+        dialog = Application.getInstance().createQmlComponent(path, {"manager": self})
         return dialog
 
     def _showDialog(self, qml):
